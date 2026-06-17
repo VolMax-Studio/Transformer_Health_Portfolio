@@ -87,22 +87,39 @@ The 3 hours above 140°C emergency limit are from the injected 1.4 pu overload e
 
 ## DGA Stress-Testing & ML Boundary Analysis (verified by `dga_stress_test.py`)
 
-Using a public DGA transformer dataset containing 589 fault samples (covering partial discharge, arcing, and low/medium/high thermal faults), we compare a traditional physical Duval Triangle classifier against a Machine Learning Classifier (Random Forest).
+Using a public DGA dataset containing 2,321 transformer records, we establish a robust diagnostic workflow comparing the traditional physical Duval Triangle 1 method against a hierarchical Machine Learning pipeline.
 
-### Headline Results:
-- **Baseline Accuracy:** The Random Forest ML model reaches **74.6%** accuracy, while the physical Duval Triangle baseline reaches only **50.8%**. The lower baseline of the physical model is due to its geometric limitations: it leaves significant portions of the ratio space unclassified (`undefined` or `normal` zone outputs for actual fault readings).
-- **Noise Tolerance Limits:** Under increasing sensor noise $\sigma$ (multiplicative Gaussian noise applied to gas inputs), both classifiers degrade gracefully, but the ML model maintains a significant advantage across all noise ranges:
+### Core Methodology & Data Cleaning
+- **Deduplication:** We removed 339 duplicate records (2,321 → 1,982 unique samples) to eliminate potential cross-validation leakage.
+- **Level 1 (Anomaly Detection):** The first stage classifies records as `Normal` (707 healthy samples) or `Faulty` (1,275 samples) using all 5 key gases ($H_2, CH_4, C_2H_6, C_2H_4, C_2H_2$). This stage achieves an out-of-fold Cross-Validation accuracy of **96.6%**.
+- **Level 2 (Fault Classification):** The second stage classifies the 1,275 faulty samples into one of the 6 standard fault types: Partial Discharge (`PD`), Low Energy Discharge (`D1`), High Energy Discharge/Arcing (`D2`), and Low/Medium/High Thermal Faults (`T1`, `T2`, `T3`).
 
-| Sensor Noise $\sigma$ | ML Classifier (RF) | Duval Triangle (Physical) | Accuracy Gain |
-|----------------------:|-------------------:|--------------------------:|--------------:|
-| 0.00 (No noise)       | **0.746**          | 0.508                     | +0.238        |
-| 0.05                  | 0.754              | 0.500                     | +0.254        |
-| 0.10                  | 0.737              | 0.475                     | +0.262        |
-| 0.20                  | 0.754              | 0.432                     | +0.322        |
-| 0.30                  | 0.678              | 0.466                     | +0.212        |
-| 0.50 (Severe noise)   | 0.653              | 0.424                     | +0.229        |
+### Headline Results & Uplift Decomposition:
+Comparing the exact physical Duval Triangle 1 boundaries to the Machine Learning classifiers, we break down where the accuracy gains originate:
 
-The complete boundaries and predictions are plotted in `results/dga_stress_test.png`, showing the physical zones alongside sample distribution and the noise robustness curve.
+1. **Duval Triangle 1 (Physical Baseline):** **47.3%** accuracy. The physical model is constrained by utilizing only 3 gases ($CH_4, C_2H_4, C_2H_2$), throwing away valuable $H_2$ (crucial for detecting `PD`) and $C_2H_6$ (crucial for distinguishing `T1/T2/T3`).
+2. **3-Gas Random Forest:** **69.5%** accuracy (**+22.2%** gain). This isolates the purely algorithmic benefit of using an ensemble classifier over the rigid, hard-coded geometric boundaries of Duval Triangle 1 on the same 3 gases.
+3. **5-Gas + Ratios Random Forest:** **80.5%** accuracy (**+33.2%** total gain). Incorporating all 5 gases and standard DGA diagnostic ratios allows the ML model to resolve Duval's blindspots—lifting `PD` recall from 12% to over 85%, and separating the thermal classes cleanly.
+
+### Sensor Noise & Repeatability stress-testing (IEEE C57.104)
+To evaluate real-world industrial robustness, we subjected both classifiers to multiplicative Gaussian noise representing sensor drift and repeatability tolerances (where a $\pm 20\%$ limit at $3\sigma$ corresponds to $\sigma = 0.067$):
+
+| Sensor Noise $\sigma$ | ML Classifier (RF 5-Gas) | Duval Triangle (Physical) | Accuracy Gain |
+|----------------------:|-------------------------:|--------------------------:|--------------:|
+| 0.00 (No noise)       | **0.805**                | 0.473                     | +0.332        |
+| 0.02                  | 0.805                    | 0.472                     | +0.333        |
+| 0.06 (IEEE C57 limit) | 0.802                    | 0.475                     | +0.327        |
+| 0.10                  | 0.788                    | 0.479                     | +0.309        |
+| 0.14                  | 0.773                    | 0.468                     | +0.305        |
+| 0.20 (Severe noise)   | 0.763                    | 0.460                     | +0.303        |
+
+### Model Confidence Calibration
+To prevent the model from "hallucinating" certainty on boundary or noisy cases, we analyzed the calibration of the out-of-fold predictions. The model is highly calibrated:
+- **Low Confidence [0.5, 0.6]:** 168 samples, **67.3%** actual accuracy.
+- **Medium Confidence [0.7, 0.8]:** 165 samples, **83.0%** actual accuracy.
+- **High Confidence [0.9, 1.0]:** 439 samples, **95.7%** actual accuracy.
+
+The complete visualizations (noise degradation curve, confidence calibration curve, and 2D Duval Triangle projections) are plotted in `results/dga_stress_test.png`.
 
 ---
 
