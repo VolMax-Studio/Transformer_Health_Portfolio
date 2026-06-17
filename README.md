@@ -1,151 +1,108 @@
-# Transformer Health Monitoring Portfolio
+# Hierarchical DGA Transformer Fault Diagnosis — with tested boundaries
 
-Physics-based transformer health assessment combining three IEC standard methods:
-thermal modeling (IEC 60076-7), insulation aging (Arrhenius model), and dissolved
-gas analysis interpretation (IEC 60599).
+Dissolved Gas Analysis (DGA) fault diagnosis that pairs the physical Duval Triangle 1
+baseline with a machine-learning classifier, and **measures exactly where each one breaks**.
+The contribution is not "ML beats Duval" — it is a decomposed, calibrated, stress-tested
+comparison where every number is reproducible and every claim is bounded.
 
-**Data: synthetic load profiles and DGA readings based on IEC standard models and published parameter ranges. NOT real field measurements.**  
-Target: 40 MVA, 110/10 kV ONAN — representative of EPS (Serbia) substation transformers.
+![results](fig_results.png)
 
----
+## Executive summary
 
-## Physical models implemented
+A power transformer's first diagnostic question is *"is this safe or failing?"*, only then
+*"what kind of fault?"*. So the pipeline is hierarchical:
 
-### 1. IEC 60076-7 Thermal Model
+- **Phase 1 — Normal vs Fault:** trivially separable. Healthy units sit at ~35 ppm total gas
+  (90th percentile 38), faults at 490 ppm median (10th percentile 80). No overlap — a simple
+  threshold suffices. This is the high-reliability screening stage.
+- **Phase 2 — fault type (PD / D1 / D2 / T1 / T2 / T3):** the hard part. The exact Duval
+  Triangle 1 reaches **47.3%**; a Random Forest using all five gases reaches **80.9%** (macro-F1
+  0.77). Crucially, the uplift is *decomposed* (below), not just reported.
 
-Two first-order differential equations for top-oil and hot-spot temperature:
+The headline finding: ML's advantage comes from reconstructing a high-dimensional decision
+surface that the 2-D Duval triangle cannot represent — and that advantage is largest exactly in
+Duval's known blind spots (PD, thermal classes).
+
+## Step 1 — correctness gate (exact Duval Triangle 1, IEC 60599)
+
+Before any ML, the physical baseline is verified, not assumed:
+
+- Duval Triangle 1 coded to published mineral-oil boundaries (D1/D2 = 23%, T1/T2 = 20%,
+  T2/T3 = 50%, T3 tolerates %C2H2 < 15, DT mixed zone).
+- **Verified** to tile the entire triangle (0 uncovered grid points) and to reproduce published
+  worked examples.
+- Dataset **deduplicated** before any split: 339 duplicate rows removed (2321 → 1982). This
+  matters — without it, identical samples leak across train/test and inflate CV accuracy.
+
+Exact Duval baseline on fault rows: **47.3%**. Per-class, it is strong on D1 (0.76) but collapses
+on PD (0.14) and thermal classes (T1 0.31, T2 0.40, T3 0.38). This is physically expected:
+Triangle 1 uses only 3 of the 5 gases, and Duval built separate Triangles 4 & 5 (with H2 and
+C2H6) precisely to resolve these classes.
+
+## Step 2 — uplift, decomposed
+
+Reporting 80.9% alone would be ML hype. The honest question is *how much comes from a better
+algorithm vs simply more sensor inputs*:
+
+| classifier | inputs | CV accuracy |
+|---|---|---|
+| Duval Triangle 1 (rules) | 3 gases | 0.473 |
+| Random Forest | 3 gases (same as Duval) | 0.694 |
+| Random Forest | 5 gases + ratios | 0.809 |
+
+- **+0.221 from the algorithm alone** (RF learns a flexible boundary on the *same* 3 gases).
+- **+0.115 from the extra gases** (H2, C2H6 that Triangle 1 discards).
+
+Two-thirds of the gain is the algorithm, one-third is information. The uplift lands in Duval's
+blind spots: PD 0.14 → 0.86, T3 0.38 → 0.94, while D1 (already strong in Duval) barely moves
+(0.76 → 0.78). ML adds value where the 3-gas physics is blind, not by "cheating" everywhere.
+
+## Step 3 — calibration & robustness
+
+**Confidence calibration (out-of-fold):** ECE = 0.072, and the model is *under*-confident — every
+bin sits above the diagonal (says 65%, is right 79%). High-confidence (≥0.9) error rate is 3.5%.
+For a grid asset this is the safe failure mode: the model errs toward "not sure, send a crew,"
+not toward confident false reassurance.
+
+**Physical noise stress-test:** multiplicative Gaussian noise on each gas independently, σ scaled
+so 3σ = the margin (3σ = 20% ↔ IEEE C57.104 reproducibility), clamped at ≥0. Both methods are
+nearly noise-immune up to 50% margin — because DGA classes are macroscopically separated
+(concentrations differ by orders of magnitude; multiplicative noise on a log scale rarely crosses
+a class boundary).
+
+**Where Duval actually breaks (the real finding):** isolating samples whose Duval zone is unstable
+under a tiny wobble (boundary samples) vs stable ones (interior):
+
+| samples | Random Forest | Duval 1 |
+|---|---|---|
+| boundary (n=17) | 0.77 | 0.29 |
+| interior (n=329) | 0.78 | 0.50 |
+
+Duval collapses to 0.29 on boundary samples — *and it does so with or without noise*. The original
+hypothesis ("measurement noise erodes Duval's edges") was **tested and rejected**: Duval's
+fragility is the rigid geometry of its hand-drawn zones, not sensor precision. RF, as an ensemble,
+smooths those edges. For this problem, decision geometry — not measurement error — is the
+bottleneck.
+
+## Strict limitations (read before reusing)
+
+- **Labels are NOT inspection-verified ground truth.** This public dataset's labels are most
+  likely heuristic (generated by a DGA method), not from physical teardown like the IEC TC10
+  database. So RF partly learns *another method's approximation*, and 80.9% is accuracy against
+  those labels, not against physical truth.
+- **Boundary finding rests on n=17** in the test fold — a strong indication, not proof.
+- **Noise model is random, not systematic.** A drifting/failing sensor adds bias, which is worse
+  than the zero-mean noise modeled here and would bite harder.
+- **Phase-1 cleanliness is dataset-specific;** real field data with marginal/incipient faults
+  near the detection threshold would blur the Normal/Fault gap.
+
+## Reproduce
 
 ```
-τ_o · d(Δθ_o)/dt = Δθ_or · ((1 + R·K²)/(1+R))^n − Δθ_o   [top-oil]
-τ_w · d(Δθ_h)/dt = Δθ_hr · K^(2m) − Δθ_h                 [winding gradient]
-
-θ_h = θ_a + Δθ_o + H · Δθ_h                               [hot-spot]
-```
-
-**40 MVA ONAN nameplate parameters:**
-
-| Parameter | Value | Source |
-|-----------|-------|--------|
-| Rated top-oil rise Δθ_or | 55 K | Typical 110 kV class |
-| Rated winding rise Δθ_hr | 23 K | |
-| Hot-spot factor H | 1.3 | IEC 60076-7, Table A.2 |
-| Load/no-load loss ratio R | 8.0 | |
-| Oil time constant τ_o | 180 min | |
-| Winding time constant τ_w | 10 min | |
-| Oil exponent n (ONAN) | 0.9 | IEC 60076-7, Table 4 |
-| Winding exponent m (ONAN) | 0.8 | |
-
-### 2. Arrhenius Insulation Aging
-
-```
-F_AA = exp(B/Θ_ref − B/(Θ_h + 273.15))
-```
-
-B = 15,000 K (Kraft paper activation energy), Θ_ref = 98°C (IEC reference).
-
-| Hot-spot °C | F_AA | Interpretation |
-|-------------|------|---------------|
-| 80 | 0.13 | Very slow aging (12.5% of reference) |
-| 98 | 1.00 | Reference rate |
-| 110 | 4.0 | 4× accelerated |
-| 120 | ~8 | 8× accelerated |
-| 140 | ~32 | 32× accelerated — emergency condition |
-
-Normal insulation life baseline: 150,000 hours at 98°C (IEC 60076-7, Annex A).
-
-### 3. DGA Interpretation (IEC 60599)
-
-**Duval Triangle** — fault classification from CH4, C2H4, C2H2 ratios:  
-PD (partial discharge) · D1/D2 (discharge) · T1/T2/T3 (thermal faults) · DT (mixed)
-
-**IEC key gas limits:**
-
-| Gas | Typical [μL/L] | High [μL/L] | Indicates |
-|-----|--------------|-------------|-----------|
-| H2 | 100 | 300 | PD, corona |
-| CH4 | 120 | 400 | Thermal <300°C |
-| C2H2 | 3 | 35 | Arcing (any C2H2 = concern) |
-| C2H4 | 50 | 200 | Thermal 300–700°C |
-| CO | 500 | 1000 | Cellulose degradation |
-
----
-
-## Annual simulation results
-
-| Metric | Value |
-|--------|-------|
-| Peak hot-spot temperature | 158.2°C (overload event) |
-| Hours above continuous limit (98°C) | 174 h |
-| Hours above emergency limit (140°C) | 3 h |
-| Annual loss of life (LOL) | 1.20% |
-| Mean aging acceleration F_AA | 0.21× |
-
-LOL of 1.20%/year → expected insulation life ≈ 83 years at this loading profile.
-The 3 hours above 140°C emergency limit are from the injected 1.4 pu overload event.
-
----
-
-## DGA Stress-Testing & ML Boundary Analysis (verified by `dga_stress_test.py`)
-
-Using a public DGA dataset containing 2,321 transformer records, we establish a robust diagnostic workflow comparing the traditional physical Duval Triangle 1 method against a hierarchical Machine Learning pipeline.
-
-### Core Methodology & Data Cleaning
-- **Deduplication:** We removed 339 duplicate records (2,321 → 1,982 unique samples) to eliminate potential cross-validation leakage.
-- **Level 1 (Anomaly Detection):** The first stage classifies records as `Normal` (707 healthy samples) or `Faulty` (1,275 samples) using all 5 key gases ($H_2, CH_4, C_2H_6, C_2H_4, C_2H_2$). This stage achieves an out-of-fold Cross-Validation accuracy of **96.6%**.
-- **Level 2 (Fault Classification):** The second stage classifies the 1,275 faulty samples into one of the 6 standard fault types: Partial Discharge (`PD`), Low Energy Discharge (`D1`), High Energy Discharge/Arcing (`D2`), and Low/Medium/High Thermal Faults (`T1`, `T2`, `T3`).
-
-### Headline Results & Uplift Decomposition:
-Comparing the exact physical Duval Triangle 1 boundaries to the Machine Learning classifiers, we break down where the accuracy gains originate:
-
-1. **Duval Triangle 1 (Physical Baseline):** **47.3%** accuracy. The physical model is constrained by utilizing only 3 gases ($CH_4, C_2H_4, C_2H_2$), throwing away valuable $H_2$ (crucial for detecting `PD`) and $C_2H_6$ (crucial for distinguishing `T1/T2/T3`).
-2. **3-Gas Random Forest:** **69.5%** accuracy (**+22.2%** gain). This isolates the purely algorithmic benefit of using an ensemble classifier over the rigid, hard-coded geometric boundaries of Duval Triangle 1 on the same 3 gases.
-3. **5-Gas + Ratios Random Forest:** **80.5%** accuracy (**+33.2%** total gain). Incorporating all 5 gases and standard DGA diagnostic ratios allows the ML model to resolve Duval's blindspots—lifting `PD` recall from 12% to over 85%, and separating the thermal classes cleanly.
-
-### Sensor Noise & Repeatability stress-testing (IEEE C57.104)
-To evaluate real-world industrial robustness, we subjected both classifiers to multiplicative Gaussian noise representing sensor drift and repeatability tolerances (where a $\pm 20\%$ limit at $3\sigma$ corresponds to $\sigma = 0.067$):
-
-| Sensor Noise $\sigma$ | ML Classifier (RF 5-Gas) | Duval Triangle (Physical) | Accuracy Gain |
-|----------------------:|-------------------------:|--------------------------:|--------------:|
-| 0.00 (No noise)       | **0.805**                | 0.473                     | +0.332        |
-| 0.02                  | 0.805                    | 0.472                     | +0.333        |
-| 0.06 (IEEE C57 limit) | 0.802                    | 0.475                     | +0.327        |
-| 0.10                  | 0.788                    | 0.479                     | +0.309        |
-| 0.14                  | 0.773                    | 0.468                     | +0.305        |
-| 0.20 (Severe noise)   | 0.763                    | 0.460                     | +0.303        |
-
-### Model Confidence Calibration
-To prevent the model from "hallucinating" certainty on boundary or noisy cases, we analyzed the calibration of the out-of-fold predictions. The model is highly calibrated:
-- **Low Confidence [0.5, 0.6]:** 168 samples, **67.3%** actual accuracy.
-- **Medium Confidence [0.7, 0.8]:** 165 samples, **83.0%** actual accuracy.
-- **High Confidence [0.9, 1.0]:** 439 samples, **95.7%** actual accuracy.
-
-The complete visualizations (noise degradation curve, confidence calibration curve, and 2D Duval Triangle projections) are plotted in `results/dga_stress_test.png`.
-
----
-
-## Quick start
-
-```bash
 pip install -r requirements.txt
-python3 run_pipeline.py     # generates results/transformer_health.png
-python3 dga_stress_test.py  # runs noise stress test, generates results/dga_stress_test.png
-pytest tests/ -v            # 27 tests, all pass
+python reproduce.py     # downloads data, regenerates every number -> verified_results.json
+python make_figs.py     # regenerates fig_results.png
 ```
 
----
-
-## BPM FiberNetworks / EPS relevance
-
-EPS operates ~220 power transformers at 110/35 kV substations across Serbia.
-BPM FiberNetworks provides monitoring infrastructure at these locations.
-
-This analysis maps directly to:
-- **Online temperature monitoring** from RTD sensors on transformer tanks
-- **DGA sampling** (currently quarterly at most substations — could be continuous with gas-in-oil sensors)
-- **Load cycle logging** from SCADA at the substation bus
-
-The NILM principle from [NILM_Disaggregation_Portfolio](https://github.com/VolMax-Studio/NILM_Disaggregation_Portfolio) applies here: derive transformer thermal state from non-intrusive measurements at the bus, without direct sensors on the winding.
-
-## License
-
-MIT
+Data: `alan-456/transformer-fault-dataset` (data.xlsx, 2321 samples, 7 classes incl. Normal),
+itself sourced from Enwen Li (IEEE DataPort) and Duval/dePablo IEC TC10 references.
