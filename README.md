@@ -5,7 +5,7 @@ baseline with a machine-learning classifier, and **measures exactly where each o
 The contribution is not "ML beats Duval" — it is a decomposed, calibrated, stress-tested
 comparison where every number is reproducible and every claim is bounded.
 
-![results](fig_results.png)
+![results](results/fig_results.png)
 
 ## Executive summary
 
@@ -100,9 +100,9 @@ bottleneck.
 
 ```
 pip install -r requirements.txt
-python reproduce.py     # downloads data, regenerates every number -> verified_results.json
-python make_figs.py     # regenerates fig_results.png
+python reproduce.py     # downloads data, regenerates every number -> results/verified_results.json
+python make_figs.py     # regenerates results/fig_results.png
 ```
 
-Data: `alan-456/transformer-fault-dataset` (data.xlsx, 2321 samples, 7 classes incl. Normal),
+Data: `alan-456/transformer-fault-dataset` (data/data.xlsx, 2321 samples, 7 classes incl. Normal),
 itself sourced from Enwen Li (IEEE DataPort) and Duval/dePablo IEC TC10 references.

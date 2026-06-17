@@ -1,6 +1,6 @@
 import json, numpy as np, matplotlib
 matplotlib.use('Agg'); import matplotlib.pyplot as plt
-R=json.load(open("verified_results.json"))
+R=json.load(open("results/verified_results.json"))
 fig,ax=plt.subplots(1,3,figsize=(15,4.5))
 
 # Panel 1: uplift decomposition
@@ -36,5 +36,5 @@ ax[2].set_title("Step 3: where Duval breaks (decision geometry)",fontweight='bol
 for i,(r,d) in enumerate([(bd["rf_boundary"],bd["duval_boundary"]),(bd["rf_interior"],bd["duval_interior"])]):
     ax[2].text(i-w/2,r+0.02,f"{r:.2f}",ha='center',fontsize=9); ax[2].text(i+w/2,d+0.02,f"{d:.2f}",ha='center',fontsize=9)
 
-plt.tight_layout(); plt.savefig("fig_results.png",dpi=110,bbox_inches='tight')
-print("saved fig_results.png")
+plt.tight_layout(); plt.savefig("results/fig_results.png",dpi=110,bbox_inches='tight')
+print("saved results/fig_results.png")

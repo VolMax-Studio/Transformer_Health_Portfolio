@@ -24,9 +24,11 @@ np.random.seed(42)
 
 # ---------- data ----------
 URL="https://github.com/alan-456/transformer-fault-dataset/raw/main/data.xlsx"
-if not os.path.exists("data.xlsx"):
-    print("downloading dataset..."); urllib.request.urlretrieve(URL,"data.xlsx")
-df=pd.read_excel("data.xlsx"); df.columns=['H2','CH4','C2H6','C2H4','C2H2','zh']
+os.makedirs("data", exist_ok=True)
+data_path = "data/data.xlsx"
+if not os.path.exists(data_path):
+    print("downloading dataset..."); urllib.request.urlretrieve(URL, data_path)
+df=pd.read_excel(data_path); df.columns=['H2','CH4','C2H6','C2H4','C2H2','zh']
 ZH={'正常':'Normal','局部放电':'PD','低能放电':'D1','高能放电':'D2',
     '低温过热':'T1','中温过热':'T2','高温过热':'T3'}
 df['label']=df['zh'].map(ZH)
@@ -123,5 +125,6 @@ R={"duval_verify":{"uncovered":miss,"spotchecks_pass":spot},
                "rf_boundary":round(rf_b,3),"duval_boundary":round(dv_b,3),
                "rf_interior":round(rf_i,3),"duval_interior":round(dv_i,3)}}
 print(json.dumps(R,indent=2))
-json.dump(R,open("verified_results.json","w"),indent=2)
-print("\nsaved verified_results.json")
+os.makedirs("results", exist_ok=True)
+json.dump(R,open("results/verified_results.json","w"),indent=2)
+print("\nsaved results/verified_results.json")
