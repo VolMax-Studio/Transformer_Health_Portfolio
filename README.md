@@ -85,11 +85,33 @@ The 3 hours above 140°C emergency limit are from the injected 1.4 pu overload e
 
 ---
 
+## DGA Stress-Testing & ML Boundary Analysis (verified by `dga_stress_test.py`)
+
+Using a public DGA transformer dataset containing 589 fault samples (covering partial discharge, arcing, and low/medium/high thermal faults), we compare a traditional physical Duval Triangle classifier against a Machine Learning Classifier (Random Forest).
+
+### Headline Results:
+- **Baseline Accuracy:** The Random Forest ML model reaches **74.6%** accuracy, while the physical Duval Triangle baseline reaches only **50.8%**. The lower baseline of the physical model is due to its geometric limitations: it leaves significant portions of the ratio space unclassified (`undefined` or `normal` zone outputs for actual fault readings).
+- **Noise Tolerance Limits:** Under increasing sensor noise $\sigma$ (multiplicative Gaussian noise applied to gas inputs), both classifiers degrade gracefully, but the ML model maintains a significant advantage across all noise ranges:
+
+| Sensor Noise $\sigma$ | ML Classifier (RF) | Duval Triangle (Physical) | Accuracy Gain |
+|----------------------:|-------------------:|--------------------------:|--------------:|
+| 0.00 (No noise)       | **0.746**          | 0.508                     | +0.238        |
+| 0.05                  | 0.754              | 0.500                     | +0.254        |
+| 0.10                  | 0.737              | 0.475                     | +0.262        |
+| 0.20                  | 0.754              | 0.432                     | +0.322        |
+| 0.30                  | 0.678              | 0.466                     | +0.212        |
+| 0.50 (Severe noise)   | 0.653              | 0.424                     | +0.229        |
+
+The complete boundaries and predictions are plotted in `results/dga_stress_test.png`, showing the physical zones alongside sample distribution and the noise robustness curve.
+
+---
+
 ## Quick start
 
 ```bash
 pip install -r requirements.txt
 python3 run_pipeline.py     # generates results/transformer_health.png
+python3 dga_stress_test.py  # runs noise stress test, generates results/dga_stress_test.png
 pytest tests/ -v            # 27 tests, all pass
 ```
 
