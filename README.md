@@ -7,7 +7,7 @@ baseline with a machine-learning classifier, and **measures exactly where each o
 The contribution is not "ML beats Duval" — it is a decomposed, calibrated, stress-tested
 comparison where every number is reproducible and every claim is bounded.
 
-![results](fig_results.png)
+![results](results/fig_results.png)
 
 ## Executive summary
 
