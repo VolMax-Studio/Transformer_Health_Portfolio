@@ -1,7 +1,5 @@
-numpy>=1.24
-scipy>=1.10
-matplotlib>=3.6
-pytest>=7.0
-pandas>=2.0
-openpyxl>=3.1
-scikit-learn>=1.2
+numpy
+pandas
+scikit-learn
+matplotlib
+openpyxl
