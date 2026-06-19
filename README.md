@@ -1,6 +1,6 @@
 # Hierarchical DGA Transformer Fault Diagnosis — with tested boundaries
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.XXXXXXX.svg)](https://doi.org/10.5281/zenodo.XXXXXXX)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20766195.svg)](https://doi.org/10.5281/zenodo.20766195)
 
 Dissolved Gas Analysis (DGA) fault diagnosis that pairs the physical Duval Triangle 1
 baseline with a machine-learning classifier, and **measures exactly where each one breaks**.
